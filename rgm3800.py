@@ -20,6 +20,8 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+_SUBVERSION_ID = "$Id$"
+
 import datetime
 import errno
 import getopt
@@ -811,7 +813,7 @@ def ParseRange(arg, min_, max_):
 
   
 def DoList(rgm, args):
-  if len(args) > 1 or args[0] in ('-h', '--help', 'help'):
+  if len(args) > 1:
     return DoHelp(rgm, args)
 
   info = rgm.GetInfo()
@@ -833,7 +835,7 @@ def DoList(rgm, args):
 
 
 def DoTrack(rgm, args):
-  if len(args) != 1 or args[0] in ('-h', '--help', 'help'):
+  if len(args) != 1:
     return DoHelp(rgm, args)
 
   info = rgm.GetInfo()
@@ -919,14 +921,30 @@ def DoHelp(rgm, args):
   print '    help                            This help'
   print '    info                            Show some info about the device'
   print '    date                            date -u `%s date`' % sys.argv[0]
-  print '    list [<from>-<to>]              List tracks [in range]'
-  print '    track <nr>                      Print waypoints as NMEA records'
+  print '    list [<range>]                  List tracks [in range]'
+  print '    track <range>                   Print waypoints as NMEA records'
   print '    interval <secs>                 Set interval between waypoints (1 <= i <= 60)'
   print '    memoryfull <overwrite|stop>     Set memory full behaviour'
   print '    format <x>                      Set what data is logged'
-  print '        0 = {Lat,Lon}; 1 = {Lat,Lon,Alt}; 2 = {Lat,Lon,Alt,Vel}'
   print '    gmouse <on|off>                 Turn GPS mouse on/off'
   print '    dump                            Continuously read+dump data from device'
+  print
+  print 'Known formats:'
+  for i in range(10):
+    try:
+      size = RGM3800Waypoint.GetRawLength(i)
+      desc = RGM3800Waypoint.GetFormatDesc(i)
+      print '    %i:  %i bytes/waypoint;  %s' % (i, size, desc)
+    except:
+      break
+  print
+  print '<range> for list/track:'
+  print '    8                               8th track only'
+  print '    5-                              5th to last track'
+  print '    7-9                             7th to 9th track'
+  print '    -2                              last two tracks'
+  print
+  print _SUBVERSION_ID
   return 0
 
 
