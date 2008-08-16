@@ -37,7 +37,7 @@ import threading
 import time
 
 
-debug = False
+verbose = False
 
 
 class _SerialMixin(object):
@@ -369,7 +369,7 @@ class RGM3800Base(object):
   def SendMessage(self, msg):
     self.ShowProgress('%s...' % msg[0:7])
     msg = NMEABuildLine(msg)
-    if debug:
+    if verbose:
       print >>sys.stderr, ">>", repr(msg)
     self._Send(msg)
 
@@ -435,7 +435,7 @@ class RGM3800Base(object):
       elif state == 'eol1':
         if c == '\n':
           # Line completed.
-          if debug:
+          if verbose:
             print >>sys.stderr, "<<",  repr(msg)
           assert msg[0] == '$'
           assert msg[-2] == '\r'
@@ -448,7 +448,7 @@ class RGM3800Base(object):
           if chksum == shouldbe:
             return msg
           else:
-            if debug:
+            if verbose:
               print >>sys.stderr, 'checksum failed: %s != %s' % (chksum, shouldbe)
             state = 'start'
             msg = ''
@@ -972,8 +972,8 @@ def main(argv):
     elif key in ('-d', '--device'):
       device = value
     elif key in ('-v', '--verbose'):
-      global debug
-      debug = True
+      global verbose
+      verbose = True
     else:
       assert False, 'Option %s not implemented.' % key
 
@@ -996,7 +996,7 @@ def main(argv):
   func = commands[command]
 
   rgm = RGM3800(device)
-  if debug:
+  if verbose:
     rgm.SetShowProgress(False)
   try:
     retval = func(rgm, args)
