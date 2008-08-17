@@ -522,7 +522,12 @@ class RGM3800Base(object):
     raise Exception('Can not talk to device.')
 
   def GetTimestamp(self):
-    data = self.SendRecv('PROY003', result='LOG003,')
+    # There is a bug in the firmware when handling PROY003:  If the logger has
+    # not made a lock on satellites yet and therefore has no idea of the time
+    # it answer with LOG002 instead of LOG003!
+    data = self.SendRecv('PROY003', lines=1)
+    if not data[0].startswith('LOG003,'):
+      return None
     self.ClearProgress()
     data = data[0].split(',')
     # LOG003,20071226,101221
@@ -733,7 +738,8 @@ def DoInfo(rgm, args):
   print '### Device ###'
   print 'Firmware version: %s' % version
   print 'Total memory    : %i KB' % (memory // 1024)
-  print 'Current UTC time: %s' % timestamp
+  if timestamp:
+    print 'Current UTC time: %s' % timestamp
   print
   print '### Configuration ###'
   print 'Logging format  : %s' % format_string
@@ -762,7 +768,10 @@ def DoDate(rgm, args):
     return DoHelp(rgm, args)
 
   timestamp = rgm.GetTimestamp()
-  print timestamp.strftime('%m%d%H%M%Y')
+  if timestamp:
+    print timestamp.strftime('%m%d%H%M%Y')
+  else:
+    print 'Date and time not available yet.'
 
 
 def ParseRange(arg, min_, max_):
