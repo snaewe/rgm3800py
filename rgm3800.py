@@ -40,6 +40,32 @@ import time
 verbose = False
 
 
+class Error(Exception):
+  """Base exception call for this module."""
+
+
+class SerialCommunicationError(Error):
+  """Something is wrong about the serial communication."""
+
+
+class SerialConnectionLost(SerialCommunicationError):
+  """Can not send/recv anymore, serial connection is gone."""
+
+
+def PrintCallInfo(func):
+  """Decorator to print function with arguments and return value."""
+  def _Runner(*args, **kwargs):
+    all_args = ['%r' % val for val in args]
+    for key, val in kwargs.iteritems():
+      all_args.append('%s=%r' % (key, val))
+    str_args = ', '.join(all_args)
+    print >>sys.stderr, '%s(%s) <-' % (func.__name__, str_args)
+    retval = func(*args, **kwargs)
+    print >>sys.stderr, '%s(%s) -> %r' % (func.__name__, str_args, retval)
+    return retval
+  return _Runner
+
+
 class _SerialMixin(object):
   """Implement buffered serial communication.
 
@@ -83,32 +109,45 @@ class _SerialMixin(object):
     self.__receiver.start()
 
   def Shutdown(self):
-    """Close serial communication."""
+    """Shut down serial communication."""
     # Notify receiver thread to stop, then wait for it.
-    self.__receiver_running = False
-    self.__receiver.join()
+    if self.__receiver_running:
+      self.__receiver_running = False
+      self.__receiver.join()
 
-    # Flush data and close file.
-    termios.tcflush(self._fd, termios.TCIOFLUSH)
-    os.close(self._fd)
+    self._Close()
+
+  def _Close(self):
+    """Flush data and close serial port file handle."""
+    if self._fd:
+      try:
+        termios.tcflush(self._fd, termios.TCIOFLUSH)
+      except termios.error:
+        pass
+      os.close(self._fd)
+      self._fd = None
 
   def __ReceiverThread(self):
     """Background thread to continuously receive data and store in a buffer."""
     # I've tried select() based and direct recv() calls before but they either
     # used up more CPU time in some way or were prone to silently drop bytes.
-    while self.__receiver_running:
-      # Prevent us eating all CPU time.
-      time.sleep(0.1)
-      try:
-        # Get whatever is there, if we're running every 1/10th of a second it
-        # shouldn't be more than ~1.5K.
-        data = os.read(self._fd, 2048)
-        self.__buffer.put(data)
-      except OSError, reason:
-        if reason.errno == errno.EAGAIN:
-          continue
-        else:
-          raise
+    try:
+      while self.__receiver_running:
+        # Prevent us eating all CPU time.
+        time.sleep(0.1)
+        try:
+          # Get whatever is there, if we're running every 1/10th of a second it
+          # shouldn't be more than ~1.5K.
+          data = os.read(self._fd, 2048)
+          self.__buffer.put(data)
+        except OSError, reason:
+          if reason.errno == errno.EAGAIN:
+            continue
+          else:
+            raise SerialConnectionLost
+    finally:
+      self.__receiver_running = False
+      self._Close()
 
   def _Send(self, data):
     """Send some data to the device.
@@ -116,6 +155,8 @@ class _SerialMixin(object):
     Args:
       data: String, data to send.
     """
+    if not self.__receiver_running:
+      raise SerialConnectionLost
     os.write(self._fd, data)
 
   def _Recv(self, length=1, timeout=None):
@@ -163,6 +204,11 @@ class _SerialMixin(object):
         data += self.__buffer2[:length]
         self.__buffer2 = self.__buffer2[length:]
         break
+
+      # If the receiver thread isn't running anymore there will be no more
+      # data.  So just bail out if we haven't finished yet.
+      if length and not self.__receiver_running:
+        raise SerialConnectionLost
 
     return data
 
@@ -366,6 +412,9 @@ class RGM3800Base(object):
   def SetProgressPercent(self, percent):
     pass
 
+  def ShowInfo(self, msg):
+    pass
+
   def SendMessage(self, msg):
     self.ShowProgress('%s...' % msg[0:7])
     msg = NMEABuildLine(msg)
@@ -448,8 +497,10 @@ class RGM3800Base(object):
           if chksum == shouldbe:
             return msg
           else:
+            # Silently ignore checksum errors and just skip the line.
             if verbose:
-              print >>sys.stderr, 'checksum failed: %s != %s' % (chksum, shouldbe)
+              print >>sys.stderr, 'checksum failed: %s != %s' % (chksum,
+                                                                 shouldbe)
             state = 'start'
             msg = ''
             continue
@@ -491,35 +542,39 @@ class RGM3800Base(object):
       # Send the command.
       self.SendMessage(request)
 
-      while True:
+      # Only accept a certain amount of noise.  If there is too much noise it's
+      # likely communication is broken anyway.
+      lines_acceptable = 20 + 5*lines
+
+      while lines_acceptable:
         # Get a line.
         msg = self.RecvMessage()
         if not msg:
           # Got no complete line until timeout.  Finished receiving.
           break
+        lines_acceptable -= 1
 
         if not result or msg.startswith(result):
           result_lines.append(msg)
 
         if lines and lines == len(result_lines):
           break
-        continue
 
       if not result_lines:
         # Failed receiving.  Retry.
-        print '[Timeout talking to device.  Retrying.]'
+        self.ShowInfo('Timeout talking to device.  Retrying.')
         continue
 
       if lines and lines != len(result_lines):
         # Not enough lines received.
-        print '[Incomplete results.  Retrying.]'
+        self.ShowInfo('Incomplete results.  Retrying.')
         continue
 
       # Got a result, return it to the caller.
       return result_lines
 
     # If we reach this point we failed repeatedly to talk to the device.
-    raise Exception('Can not talk to device.')
+    raise SerialCommunicationError('Can not talk to device.')
 
   def GetTimestamp(self):
     # There is a bug in the firmware when handling PROY003:  If the logger has
@@ -606,18 +661,32 @@ class RGM3800Base(object):
 
   def _RetrieveWaypoints(self, address, format, n):
     waypoint_len = RGM3800Waypoint.GetRawLength(format)
+    retries = 5
     wps = []
     while len(wps) != n:
+      if retries <= 0:
+        raise SerialCommunicationError
       self.SendMessage('PROY102,%i,%i,%i' % (address, format, n))
+      retries -= 1
 
+      noise = 0
       wps = []
       while len(wps) != n:
         msg = self.RecvMessage()
         if not msg:
           break
+        if noise > 100:
+          raise SerialCommunicationError('too much noise')
         if not msg.startswith('LOG102,'):
+          noise += 1
           continue
-        part, length = struct.unpack('<HB', msg[7:10])
+        try:
+          part, length = struct.unpack('<HB', msg[7:10])
+        except struct.error:
+          # Probably a broken line.  Ignore.  Several of these means the
+          # communication is broken.
+          noise += 20
+          continue
         msg = msg[10:]
         if len(msg) % waypoint_len != 0:
           # Silently ignore broken lines, retransmit will fix this.
@@ -699,6 +768,9 @@ class RGM3800(RGM3800Base, _SerialMixin):
     if self.show_progress:
       sys.stderr.write(' ' * 40 + '\r')
       sys.stderr.flush()
+
+  def ShowInfo(self, msg):
+    sys.stderr.write('[%s]\n' % msg)
 
 
 def DoInfo(rgm, args):
