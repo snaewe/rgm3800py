@@ -20,6 +20,7 @@
 _SUBVERSION_ID = "$Id$"
 
 import datetime
+import math
 import StringIO
 import time
 import unittest
@@ -238,6 +239,25 @@ class RGM3800WaypointTest(unittest.TestCase):
     for format, expected in golden.iteritems():
       self.assertEqual(expected,
                        rgm3800.RGM3800Waypoint.GetRawLength(format))
+
+  def testRad2Deg(self):
+    def assertDegEquals(expected, rad):
+      is_positive, deg, min = rgm3800.RGM3800Waypoint._Rad2Deg(rad)
+      self.assertEqual(expected[0], is_positive)
+      self.assertEqual(expected[1], deg)
+      self.assertAlmostEqual(expected[2], min, places=2)
+
+    # Exactly on the Equator resp. Prime Meridian.
+    assertDegEquals((True, 0, 0.0), 0.0)
+
+    # Slightly off in both directions.
+    assertDegEquals((True, 0, 34.38), 0.01)
+    assertDegEquals((False, 0, 34.38), -0.01)
+
+    # On the other side of the globe.
+    # TODO: Travel to Tuvalu for verification.
+    assertDegEquals((True, 179, 25.62), math.pi-0.01)
+    assertDegEquals((False, 180, 34.38), -math.pi-0.01)
 
   DATA0 = _ParseData(
       '01   0b 22 24   16 bd 72 3f   a6 28 30 3e')  # ?, UTC, Lat, Lon

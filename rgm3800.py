@@ -309,33 +309,37 @@ class RGM3800Waypoint(object):
   RAD2DEG = 180.0/math.pi
   KMH2KNOT = 1.0/1.852
 
+  @classmethod
+  def _Rad2Deg(cls, value):
+    """Convert radians to degree values.
+
+    Args:
+      value: Float, radians value of latitude/longitude.
+
+    Returns:
+      (is_positive, degree, minutes) where is_positive is a boolean, degree is
+      an integer and minutes is a float.
+    """
+    value *= cls.RAD2DEG
+    is_positive = value >= 0.0
+    value = abs(value)
+    degree = int(value)
+    minutes = (value-degree) * 60.0
+    return is_positive, degree, minutes
+
   def GetNMEARecords(self):
     data = {
       'date': self.date.strftime('%d%m%y'),
       'time': self.timestamp.strftime('%H%M%S.000')
     }
 
-    lat = self.lat * self.RAD2DEG
-    lat_deg = int(lat)
-    lat_min = abs(lat-lat_deg) * 60.0
-    if lat_deg >= 0:
-      lat_let = 'N'
-    else:
-      lat_deg = abs(lat_deg)
-      lat_let = 'S'
+    lat_let, lat_deg, lat_min = self._Rad2Deg(self.lat)
     data['lat'] = '%02i%07.4f' % (lat_deg, lat_min)
-    data['lat_NS'] = lat_let
+    data['lat_NS'] = lat_let and 'N' or 'S'
 
-    lon = self.lon * self.RAD2DEG
-    lon_deg = int(lon)
-    lon_min = abs(lon-lon_deg) * 60.0
-    if lon_deg >= 0:
-      lon_let = 'E'
-    else:
-      lon_deg = abs(lon_deg)
-      lon_let = 'W'
+    lon_let, lon_deg, lon_min = self._Rad2Deg(self.lon)
     data['lon'] = '%03i%07.4f' % (lon_deg, lon_min)
-    data['lon_EW'] = lon_let
+    data['lon_EW'] = lon_let and 'E' or 'W'
 
     data['alt'] = '%06.1f' % self.alt
     data['vel'] = '%06.2f' % (self.vel * self.KMH2KNOT)
