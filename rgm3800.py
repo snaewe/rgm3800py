@@ -400,6 +400,9 @@ def NMEABuildLine(msg):
 
 
 class RGM3800Base(object):
+  def __init__(self):
+    self._cached_info = None
+
   def ShowProgress(self, msg):
     pass
 
@@ -635,10 +638,16 @@ class RGM3800Base(object):
     return result == '1'
  
   def GetInfo(self):
+    # Instances of this class should be short-lived and many features require
+    # this global info.  Speed it up by caching it.
+    if self._cached_info:
+      return self._cached_info
     msg = self.SendRecv('PROY108', result='LOG108,')
     data = msg[0].split(',')[1:]
     # data type, ?, ?, memory full, ?, interval, ?, #tracks, #waypoints in last track
-    return map(int, data)
+    result = map(int, data)
+    self._cached_info = result
+    return result
 
   def GetMemoryInfo(self):
     msg = self.SendRecv('PROY100', result='LOG100,')
@@ -744,10 +753,13 @@ class RGM3800Base(object):
 
 class RGM3800(RGM3800Base, _SerialMixin):
   def __init__(self, device):
-    super(RGM3800, self).__init__(device)
+    RGM3800Base.__init__(self)
+
     self.progress_dash = 0
     self.progress_percent = None
     self.show_progress = True
+
+    _SerialMixin.__init__(self, device)
 
   def SetShowProgress(self, show):
     self.show_progress = show
@@ -1080,7 +1092,11 @@ def main(argv):
   if verbose:
     rgm.SetShowProgress(False)
   try:
-    retval = func(rgm, args)
+    retval = -1
+    try:
+      retval = func(rgm, args)
+    except SerialCommunicationError, reason:
+      print 'ERROR: %s' % reason
   finally:
     rgm.Shutdown()
 
