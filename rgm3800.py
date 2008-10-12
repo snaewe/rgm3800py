@@ -987,7 +987,7 @@ def DoInterval(rgm, args):
 
 
 def DoFormat(rgm, args):
-  if not ((len(args) == 1) and (0 <= int(args[0]) <= 3)):
+  if len(args) != 1:
     return DoHelp(rgm,args)
   format = int(args[0])
   if rgm.SetFormat(format):
