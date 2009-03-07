@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # This is a program to read data off a RoyalTek RGM 3800 GPS data logger.
-# Copyright in 2007, 2008 by Karsten Petersen <kapet@kapet.de>
+# Copyright in 2007, 2008, 2009 by Karsten Petersen <kapet@kapet.de>
 #
 # Contributions by Stephen Hildrey <steve@uptime.org.uk>
 #               and Jens-Uwe Hagenah <>
@@ -746,7 +746,7 @@ class RGM3800Base(object):
       _number -= n
       address += n * waypoint_len
       waypoints.extend(wps)
-      self.SetProgressPercent((len(waypoints) * 100) / number)
+      self.SetProgressPercent(len(waypoints) * 100 / number)
 
     for wp in waypoints:
       wp.SetDate(date)
@@ -820,7 +820,7 @@ def DoInfo(rgm, args):
     ilen = RGM3800Waypoint.GetRawLength(format)
     total_size += ilen * waypoints
     total_waypoints += waypoints
-    rgm.SetProgressPercent(i*100/(tracks-1))
+    rgm.SetProgressPercent((i + 1) * 100 / tracks)
   rgm.SetProgressPercent(None)
 
   print '### Device ###'
