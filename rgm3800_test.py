@@ -21,6 +21,7 @@ _SUBVERSION_ID = "$Id$"
 
 import datetime
 import math
+from xml.dom import minidom
 import StringIO
 import time
 import unittest
@@ -344,6 +345,53 @@ class RGM3800WaypointTest(unittest.TestCase):
     wp.SetDate(date)
 
     self.assertEqual(golden, wp.GetNMEARecords())
+
+  def testGPXTrackPTFormat0(self):
+    date = datetime.date(2008, 1, 1)
+    golden = ('<trkpt lat="54.327728" lon="9.856596">'
+              '<time>2008-01-01T11:34:36Z</time>'
+              '</trkpt>')
+
+    wp = rgm3800.RGM3800Waypoint(0)
+    wp.Parse(self.DATA0)
+    wp.SetDate(date)
+
+    gpxdoc = minidom.getDOMImplementation().createDocument(None, 'gpx', None)
+    result = wp.GetGPXTrackPT(gpxdoc)
+    self.assertEqual(golden, result.toxml())
+
+  def testGPXTrackPTFormat1(self):
+    date = datetime.date(1978, 2, 20)
+    golden = ('<trkpt lat="54.327082" lon="9.856781">'
+              '<time>1978-02-20T21:10:23Z</time>'
+              '<ele>78.4</ele>'
+              '</trkpt>')
+
+    wp = rgm3800.RGM3800Waypoint(1)
+    wp.Parse(self.DATA1)
+    wp.SetDate(date)
+
+    gpxdoc = minidom.getDOMImplementation().createDocument(None, 'gpx', None)
+    result = wp.GetGPXTrackPT(gpxdoc)
+    self.assertEqual(golden, result.toxml())
+
+  def testGPXTrackPTFormat4(self):
+    date = datetime.date(2008, 7, 31)
+    golden = ('<trkpt lat="54.369955" lon="9.897975">'
+              '<time>2008-07-31T22:36:41Z</time>'
+              '<ele>56.1</ele>'
+              '<hdop>0.8</hdop>'
+              '<vdop>1.1</vdop>'
+              '<pdop>1.4</pdop>'
+              '</trkpt>')
+
+    wp = rgm3800.RGM3800Waypoint(4)
+    wp.Parse(self.DATA4)
+    wp.SetDate(date)
+
+    gpxdoc = minidom.getDOMImplementation().createDocument(None, 'gpx', None)
+    result = wp.GetGPXTrackPT(gpxdoc)
+    self.assertEqual(golden, result.toxml())
 
   
 class ParseRangeTest(unittest.TestCase):

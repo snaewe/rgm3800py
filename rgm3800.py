@@ -27,6 +27,7 @@ import errno
 import getopt
 import glob
 import math
+from xml.dom import minidom
 import os
 import Queue
 import re
@@ -390,6 +391,42 @@ class RGM3800Waypoint(object):
     for o in output:
       result.append(NMEABuildLine(o))
     return ''.join(result)
+
+  def GetGPXTrackPT(self, gpxdoc):
+    e_trkpt = gpxdoc.createElement('trkpt')
+
+    # Lat + Lon
+    e_trkpt.setAttribute('lat', '%f' % (self.lat * self.RAD2DEG))
+    e_trkpt.setAttribute('lon', '%f' % (self.lon * self.RAD2DEG))
+
+    # Timestamp
+    e_time = gpxdoc.createElement('time')
+    e_trkpt.appendChild(e_time)
+    time_str = '%sT%sZ' % (self.date.strftime('%Y-%m-%d'),
+                           self.timestamp.strftime('%H:%M:%S'))
+    e_time.appendChild(gpxdoc.createTextNode(time_str))
+
+    # Altitude
+    if self.format >= 1:
+      e_elevation = gpxdoc.createElement('ele')
+      e_trkpt.appendChild(e_elevation)
+      e_elevation.appendChild(gpxdoc.createTextNode('%.1f' % self.alt))
+
+    # HDOP, VDOP, PDOP
+    if self.format >= 4:
+      e_hdop = gpxdoc.createElement('hdop')
+      e_hdop.appendChild(gpxdoc.createTextNode('%.1f' % self.hdop))
+      e_trkpt.appendChild(e_hdop)
+
+      e_vdop = gpxdoc.createElement('vdop')
+      e_vdop.appendChild(gpxdoc.createTextNode('%.1f' % self.vdop))
+      e_trkpt.appendChild(e_vdop)
+
+      e_pdop = gpxdoc.createElement('pdop')
+      e_pdop.appendChild(gpxdoc.createTextNode('%.1f' % self.pdop))
+      e_trkpt.appendChild(e_pdop)
+
+    return e_trkpt
 
 
 def NMEACalcChecksum(msg):
@@ -966,6 +1003,38 @@ def DoTrack(rgm, args):
   return 0
 
 
+def DoTrackX(rgm, args):
+  if len(args) != 1:
+    return DoHelp(rgm, args)
+
+  info = rgm.GetInfo()
+  _, _, _, _, _, _, _, tracks, _ = info
+
+  range_iter = ParseRange(args[0], 0, tracks-1)
+  if not range_iter:
+    return DoHelp(rgm, args)
+
+  gpxdoc = minidom.getDOMImplementation().createDocument(
+      'http://www.topografix.com/GPX/1/1', 'gpx', None)
+  e_gpx = gpxdoc.documentElement
+  e_gpx.setAttribute('version', '1.1')
+  e_gpx.setAttribute('creator', 'rgm3800py')
+
+  e_trk = gpxdoc.createElement('trk')
+  e_gpx.appendChild(e_trk)
+
+  for i in range_iter:
+    e_trkseg = gpxdoc.createElement('trkseg')
+    e_trk.appendChild(e_trkseg)
+
+    waypoints = rgm.GetWaypoints(i)
+    for wp in waypoints:
+      e_trkseg.appendChild(wp.GetGPXTrackPT(gpxdoc))
+
+  print gpxdoc.toxml()
+  return 0
+
+
 def DoGMouse(rgm, args):
   if len(args) != 1 or args[0] not in ('on', 'off'):
     return DoHelp(rgm, args)
@@ -1056,6 +1125,7 @@ def DoHelp(rgm, args):
   print '    date                            date -u `%s date`' % sys.argv[0]
   print '    list [<range>]                  List tracks [in range]'
   print '    track <range>                   Print waypoints as NMEA records'
+  print '    trackx <range>                  Print waypoints in GPX form'
   print '    interval <secs>                 Set interval between waypoints (1 <= i <= 60)'
   print '    memoryfull <overwrite|stop>     Set memory full behaviour'
   print '    format <x>                      Set what data is logged'
@@ -1087,6 +1157,7 @@ commands = {
   'date': DoDate,
   'list': DoList,
   'track': DoTrack,
+  'trackx': DoTrackX,
   'interval': DoInterval,
   'format': DoFormat,
   'memoryfull': DoMemoryFull,
