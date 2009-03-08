@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # These are the tests for rgm3800.py
-# Copyright in 2008 by Karsten Petersen <kapet@kapet.de>
+# Copyright in 2008, 2009 by Karsten Petersen <kapet@kapet.de>
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -58,11 +58,17 @@ class RGM3800WithSerialMock(rgm3800.RGM3800Base):
   def Shutdown(self):
     pass
 
+  def _TestAddToPlaybook(self, action, data):
+    if self._playbook and self._playbook[-1][0] == action:
+      self._playbook[-1] = (action, self._playbook[-1][1] + data)
+    else:
+      self._playbook.append((action, data))
+
   def TestExpect(self, data):
-    self._playbook.append(('send', data))
+    self._TestAddToPlaybook('send', data)
 
   def TestProvide(self, data):
-    self._playbook.append(('recv', data))
+    self._TestAddToPlaybook('recv', data)
 
   def _TestPrepareNextAction(self):
     self._testaction = self._playbook.pop(0)
@@ -392,6 +398,24 @@ class RGM3800Test(unittest.TestCase):
     self.rgm.TestFinish()
     self.assertEqual(datetime.datetime(2007, 12, 25, 11, 34, 36), x)
     self.assertEqual(datetime.datetime(2007, 12, 26, 10, 15, 25), y)
+
+  def testEraseFails(self):
+    self.rgm.TestExpect('$PROY109,-1*1C\r\n')
+    self.rgm.TestProvide('$LOG109,0*60\r\n')
+    self.rgm.TestStart()
+    x = self.rgm.Erase()
+    self.rgm.TestFinish()
+    self.assertEqual(False, x)
+
+  def testErase(self):
+    self.rgm.TestExpect('$PROY109,-1*1C\r\n')
+    self.rgm.TestProvide('$LOG109,1*61\r\n')
+    for i in range(30):
+      self.rgm.TestProvide('$PSRFTXTSFAM Test Report: Erase now*42\r\n')
+    self.rgm.TestStart()
+    x = self.rgm.Erase(msg_timeout=0.01)
+    self.rgm.TestFinish()
+    self.assertEqual(True, x)
 
 
 if __name__ == '__main__':

@@ -754,6 +754,22 @@ class RGM3800Base(object):
     self.SetProgressPercent(None)
     return waypoints
 
+  def Erase(self, msg_timeout=2):
+    data = self.SendRecv('PROY109,-1', lines=1)
+    if data[0] != 'LOG109,1':
+      return False
+
+    # The logger will now output one message per second until memory is clear.
+    # Just fetch whatever comes in and wait for the messages to stop.
+    last_message = time.time()
+    while time.time() - last_message < msg_timeout:
+      msg = self.RecvMessage()
+      if msg and msg.startswith('PSRFTXTSFAM Test Report:'):
+        last_message = time.time()
+        self.ShowProgress(msg[24:])
+
+    return True
+
 
 class RGM3800(RGM3800Base, _SerialMixin):
   def __init__(self, device):
@@ -1007,6 +1023,26 @@ def DoMemoryFull(rgm, args):
   return 0
 
 
+def DoErase(rgm, args):
+  if len(args) != 1 or args[0] != 'all':
+    return DoHelp(rgm, args)
+
+  try:
+    sure = raw_input('Do you really want to delete ALL tracks? (y/n) [n]: ').lower()
+  except KeyboardInterrupt:
+    print
+    sure = 'n'
+
+  if sure != 'y':
+    print 'Canceled.'
+  elif rgm.Erase():
+    print 'OK'
+  else:
+    print 'Failed.'
+
+  return 0
+
+
 def DoHelp(rgm, args):
   print 'Usage: %s <GLOBAL OPTIONS> <COMMAND> <COMMAND OPTIONS>' % sys.argv[0]
   print
@@ -1025,6 +1061,7 @@ def DoHelp(rgm, args):
   print '    format <x>                      Set what data is logged'
   print '    gmouse <on|off>                 Turn GPS mouse on/off'
   print '    dump                            Continuously read+dump data from device'
+  print '    erase all                       Delete all tracks, clear memory'
   print
   print 'Known formats:'
   for i in range(10):
@@ -1055,6 +1092,7 @@ commands = {
   'memoryfull': DoMemoryFull,
   'gmouse': DoGMouse,
   'dump': DoDump,
+  'erase': DoErase,
   'help': DoHelp,
 }
 
