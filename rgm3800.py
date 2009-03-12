@@ -283,8 +283,10 @@ class RGM3800Waypoint(object):
     self.Clear()
 
     # Basic data, always logged:  UTC, latitude, longitude
-    _, h, m, s, self.lat, self.lon = struct.unpack('<4B2f', data[0:12])
-    self.timestamp = datetime.time(h, m, s)
+    ok, h, m, s, self.lat, self.lon = struct.unpack('<4B2f', data[0:12])
+    if ok != 1:
+      raise ValueError
+    self.timestamp = datetime.time(h, m, s)  # Can raise ValueError.
 
     if self.format >= 1:
       # Basic data + altitude
@@ -709,19 +711,19 @@ class RGM3800Base(object):
     for i in range(tracks):
       data = self.GetTrackInfo(i)
 
-  def _RetrieveWaypoints(self, address, format, n):
+  def _RetrieveWaypoints(self, address, format, amount):
     waypoint_len = RGM3800Waypoint.GetRawLength(format)
     retries = 5
-    wps = []
-    while len(wps) != n:
+    retrieved = 0
+    while retrieved != amount:
       if retries <= 0:
         raise SerialCommunicationError
-      self.SendMessage('PROY102,%i,%i,%i' % (address, format, n))
+      self.SendMessage('PROY102,%i,%i,%i' % (address, format, amount))
       retries -= 1
 
       noise = 0
       wps = []
-      while len(wps) != n:
+      while retrieved != amount:
         msg = self.RecvMessage()
         if not msg:
           break
@@ -745,9 +747,19 @@ class RGM3800Base(object):
           data = msg[:waypoint_len]
           msg = msg[waypoint_len:]
 
-          wp = RGM3800Waypoint(format)
-          wp.Parse(data)
-          wps.append(wp)
+          try:
+            wp = RGM3800Waypoint(format)
+            wp.Parse(data)
+            wps.append(wp)
+          except ValueError:
+            # Data is broken in some way although the whole line must have
+            # passed the checksum test above.  This means the logger is storing
+            # broken data internally and returning it every time.  Nothing we
+            # can do, just ignore it. 
+            pass
+
+          retrieved += 1
+
     return wps
 
   def GetFirstLastWaypoints(self, number):
@@ -824,22 +836,24 @@ class RGM3800(RGM3800Base, _SerialMixin):
   def SetProgressPercent(self, percent):
     self.progress_percent = percent
 
+  def _Print(self, msg):
+    sys.stderr.write(msg)
+    sys.stderr.flush()
+
   def ShowProgress(self, msg):
     if self.show_progress:
       head = '/-\|'[self.progress_dash]
       self.progress_dash = (self.progress_dash + 1) & 3
       if self.progress_percent is not None:
         head += ' %i%%' % self.progress_percent
-      sys.stderr.write('[%s %s]\r' % (head, msg))
-      sys.stderr.flush()
+      self._Print('[%s %s]\r' % (head, msg))
 
   def ClearProgress(self):
     if self.show_progress:
-      sys.stderr.write(' ' * 40 + '\r')
-      sys.stderr.flush()
+      self._Print(' ' * 40 + '\r')
 
   def ShowInfo(self, msg):
-    sys.stderr.write('[%s]\n' % msg)
+    self._Print('[%s]\n' % msg)
 
 
 def DoInfo(rgm, args):
@@ -861,7 +875,12 @@ def DoInfo(rgm, args):
   memory, _, _, _ = rgm.GetMemoryInfo()
 
   data = rgm.SendRecv('PROY005', lines=5)
-  version = data[1].split(']', 1)[1]
+  for line in data:
+    if line.startswith('PSRFTXT,[ONOFFLOG]'):
+      version = data[1].split(']', 1)[1]
+      break
+  else:
+    version = '[unknown]'
 
   memory_from, memory_to = rgm.GetMemoryTimeframe()
 
@@ -1168,6 +1187,14 @@ commands = {
 }
 
 
+def FindDevice():
+  devices = glob.glob('/dev/cu.PL2303-*')
+  if len(devices) != 1:
+    return None
+  else:
+    return devices[0]
+
+
 def main(argv):
   device = None
 
@@ -1184,14 +1211,10 @@ def main(argv):
       assert False, 'Option %s not implemented.' % key
 
   if not device:
-    devices = glob.glob('/dev/cu.PL2303-*')
-    if len(devices) == 0:
-      print >>sys.stderr, 'No PL2303 serial device found.  Use --device=...'
+    device = FindDevice()
+    if not device:
+      print >>sys.stderr, 'None or multiple PL2303 serial device found.  Use --device=...'
       return -1
-    if len(devices) > 1:
-      print >>sys.stderr, 'Multiple PL2303 serial devices found.  Use --device=...'
-      return -1
-    device = devices[0]
 
   if len(args) == 0:
     args = ['help']

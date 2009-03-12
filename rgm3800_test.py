@@ -54,6 +54,7 @@ class MissingActionError(Error):
 
 class RGM3800WithSerialMock(rgm3800.RGM3800Base):
   def __init__(self, filename):
+    rgm3800.RGM3800Base.__init__(self)
     self._playbook = []
 
   def Shutdown(self):
@@ -464,6 +465,25 @@ class RGM3800Test(unittest.TestCase):
     x = self.rgm.Erase(msg_timeout=0.01)
     self.rgm.TestFinish()
     self.assertEqual(True, x)
+
+
+if 0:
+  class RGM3800TestBrokenData(unittest.TestCase):
+    def setUp(self):
+      self.rgm = RGM3800WithSerialMock('filename')
+
+    def testBrokenData(self):
+      self.rgm.TestExpect('$PROY108*2D\r\n')
+      self.rgm.TestProvide('$LOG108,4,-1,-1,1,0,1,0,15,285*5E\r\n')
+      self.rgm.TestExpect('$PROY101,13*0A\r\n')
+      self.rgm.TestProvide('$LOG101,20090311,4,28,288484*48\r\n')
+      self.rgm.TestExpect('$PROY102,288484,4,28*3F\r\n')
+      self.rgm.TestProvide('$LOG102,...\r\n')
+      # The data contains a row with ok=255, h=255, m=255, s=255, this should
+      # be skipped.  Data removed for privacy reasons.
+      self.rgm.TestStart()
+      rgm3800.DoTrack(self.rgm, ['13'])
+      self.rgm.TestFinish()
 
 
 if __name__ == '__main__':
