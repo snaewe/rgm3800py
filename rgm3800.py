@@ -20,7 +20,7 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-_SUBVERSION_ID = "$Id$"
+_SUBVERSION_ID = "$Revision$ / $Date$"
 
 import datetime
 import errno
@@ -1167,8 +1167,11 @@ def DoHelp(rgm, args):
   print '    7-9                             7th to 9th track'
   print '    -2                              last two tracks'
   print
-  print _SUBVERSION_ID
   return 0
+
+
+def DoHelp(rgm, args):
+  print _SUBVERSION_ID
 
 
 commands = {
@@ -1184,6 +1187,7 @@ commands = {
   'dump': DoDump,
   'erase': DoErase,
   'help': DoHelp,
+  'version': DoVersion,
 }
 
 
@@ -1201,7 +1205,8 @@ def main(argv):
   options, args = getopt.getopt(argv[1:], 'hd:v', ['help', 'device=', 'verbose'])
   for key, value in options:
     if key in ('-h', '--help'):
-	return DoHelp(None, [])
+      args = ['help']
+      break
     elif key in ('-d', '--device'):
       device = value
     elif key in ('-v', '--verbose'):
@@ -1209,13 +1214,6 @@ def main(argv):
       verbose = True
     else:
       assert False, 'Option %s not implemented.' % key
-
-  if not device:
-    device = FindDevice()
-    if not device:
-      print >>sys.stderr, 'None or multiple PL2303 serial device found.  Use --device=...'
-      return -1
-
   if len(args) == 0:
     args = ['help']
   command = args[0]
@@ -1224,6 +1222,18 @@ def main(argv):
     command = 'help'
   func = commands[command]
 
+  # Special handling for functions that don't communicate with the logger.
+  if command in ['help', 'version']:
+    return func(args)
+
+  # Find the logger.
+  if not device:
+    device = FindDevice()
+    if not device:
+      print >>sys.stderr, 'None or multiple PL2303 serial device found.  Use --device=...'
+      return -1
+
+  # Open the device and run the function.
   rgm = RGM3800(device)
   if verbose:
     rgm.SetShowProgress(False)
