@@ -20,7 +20,8 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-_SUBVERSION_ID = "$Revision$ / $Date$"
+_SUBVERSION_REVISION = '$Revision$'
+_SUBVERSION_DATE = '$Date$'
 
 import datetime
 import errno
@@ -1131,7 +1132,7 @@ def DoErase(rgm, args):
   return 0
 
 
-def DoHelp(rgm, args):
+def DoHelp():
   print 'Usage: %s <GLOBAL OPTIONS> <COMMAND> <COMMAND OPTIONS>' % sys.argv[0]
   print
   print 'GLOBAL OPTIONS:'
@@ -1167,11 +1168,15 @@ def DoHelp(rgm, args):
   print '    7-9                             7th to 9th track'
   print '    -2                              last two tracks'
   print
+  DoVersion()
   return 0
 
 
-def DoHelp(rgm, args):
-  print _SUBVERSION_ID
+def DoVersion():
+  r = _SUBVERSION_REVISION.replace('$', '').strip()
+  d = _SUBVERSION_DATE.split()[1]
+  print 'rgm3800py %s (%s)' % (r, d)
+  return 0
 
 
 commands = {
@@ -1224,7 +1229,7 @@ def main(argv):
 
   # Special handling for functions that don't communicate with the logger.
   if command in ['help', 'version']:
-    return func(args)
+    return func()
 
   # Find the logger.
   if not device:
