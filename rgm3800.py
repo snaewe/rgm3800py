@@ -1189,10 +1189,12 @@ def DoHelp():
 
 
 def DoVersion():
-  r = _SUBVERSION_REVISION.replace('$', '').strip()
-  d = _SUBVERSION_DATE.split()[1]
-  pySerial = 'serial' in sys.modules and ' pySerial' or ''
-  print 'rgm3800py %s (%s)%s' % (r, d, pySerial)
+  try:
+    r = _SUBVERSION_REVISION.replace('$', '').strip()
+    d = _SUBVERSION_DATE.split()[1]
+  except IndexError:
+    (r, d) = ('undef','undef')
+  print 'rgm3800py %s (%s)' % (r, d)
   return 0
 
 
