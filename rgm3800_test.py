@@ -52,13 +52,9 @@ class MissingActionError(Error):
   """Some expected trailing actions weren't done."""
 
 
-class RGM3800WithSerialMock(rgm3800.RGM3800Base):
-  def __init__(self, filename):
-    rgm3800.RGM3800Base.__init__(self)
+class MockSerial(object):
+  def __init__(self):
     self._playbook = []
-
-  def Shutdown(self):
-    pass
 
   def _TestAddToPlaybook(self, action, data):
     if self._playbook and self._playbook[-1][0] == action:
@@ -134,81 +130,67 @@ class RGM3800WithSerialMock(rgm3800.RGM3800Base):
       raise UnexpectedCallError('expected %s, got %s' % (self._testaction[0], failmsg))
       # ok
 
-  def _Send(self, data):
+  def write(self, data):
     self._TestCommonFunc('send', 'send(%r)' % data)
     self._testbuffer.write(data)
 
-  def _Recv(self, length=1, timeout=None):
-    self._TestCommonFunc('recv', 'recv(%i, %s)' % (length, timeout))
+  def read(self, length=1):
+    self._TestCommonFunc('recv', 'recv(%i)' % length)
     data = self._testbuffer.read(length)
-    if (timeout is None) and (len(data) != length):
-      raise DeadlockError('deadlock in _Recv')
-      # ok
     return data
 
 
-class SerialMockTest(unittest.TestCase):
+class MockSerialTest(unittest.TestCase):
   def setUp(self):
-    self.rgm = RGM3800WithSerialMock('filename')
+    self.conn = MockSerial()
 
   def testEmptyPlaybook(self):
-    self.rgm.TestStart()
-    self.rgm.TestFinish()
+    self.conn.TestStart()
+    self.conn.TestFinish()
 
   def testEmptyPlaybookDisallowsActions(self):
-    self.rgm.TestStart()
+    self.conn.TestStart()
     self.assertRaises(UnexpectedCallError,
-                      self.rgm._Send, 'foo')
+                      self.conn.write, 'foo')
 
   def testRightOrderRightData(self):
-    self.rgm.TestExpect('foo')
-    self.rgm.TestProvide('bar')
-    self.rgm.TestStart()
-    self.rgm._Send('foo')
-    self.assertEqual('bar', self.rgm._Recv(3))
-    self.rgm.TestFinish()
+    self.conn.TestExpect('foo')
+    self.conn.TestProvide('bar')
+    self.conn.TestStart()
+    self.conn.write('foo')
+    self.assertEqual('bar', self.conn.read(3))
+    self.conn.TestFinish()
 
   def testUncalledActionInFinishRaises(self):
-    self.rgm.TestExpect('foo')
-    self.rgm.TestProvide('bar')
-    self.rgm.TestStart()
-    self.rgm._Send('foo')
+    self.conn.TestExpect('foo')
+    self.conn.TestProvide('bar')
+    self.conn.TestStart()
+    self.conn.write('foo')
     self.assertRaises(MissingActionError,
-                      self.rgm.TestFinish)
+                      self.conn.TestFinish)
 
   def testWrongOrderRaises(self):
-    self.rgm.TestExpect('foo')
-    self.rgm.TestProvide('bar')
-    self.rgm.TestStart()
+    self.conn.TestExpect('foo')
+    self.conn.TestProvide('bar')
+    self.conn.TestStart()
     self.assertRaises(UnexpectedCallError,
-                      self.rgm._Recv, 3)
-
-  def testRecvWithTimeout(self):
-    self.rgm.TestProvide('bar')
-    self.rgm.TestStart()
-    self.assertEqual('bar', self.rgm._Recv(4, 1.0))
-
-  def testRecvDeadlockRaises(self):
-    self.rgm.TestProvide('bar')
-    self.rgm.TestStart()
-    self.assertRaises(DeadlockError,
-                      self.rgm._Recv, 4, None)
+                      self.conn.read, 3)
 
   def testWrongDataSentRaises(self):
-    self.rgm.TestExpect('foo')
-    self.rgm.TestProvide('bar')
-    self.rgm.TestStart()
-    self.rgm._Send('foofoo')
+    self.conn.TestExpect('foo')
+    self.conn.TestProvide('bar')
+    self.conn.TestStart()
+    self.conn.write('foofoo')
     self.assertRaises(UnexpectedDataError,
-                      self.rgm._Recv, 3)
+                      self.conn.read, 3)
 
   def testNotAllDataReceivedRaises(self):
-    self.rgm.TestProvide('bar')
-    self.rgm.TestExpect('foo')
-    self.rgm.TestStart()
-    self.rgm._Recv(1)
+    self.conn.TestProvide('bar')
+    self.conn.TestExpect('foo')
+    self.conn.TestStart()
+    self.conn.read(1)
     self.assertRaises(UnusedDataError,
-                      self.rgm._Send, 'foo')
+                      self.conn.write, 'foo')
     
 
 class NMEATest(unittest.TestCase):
@@ -429,41 +411,51 @@ class ParseRangeTest(unittest.TestCase):
 
 class RGM3800Test(unittest.TestCase):
   def setUp(self):
-    self.rgm = RGM3800WithSerialMock('filename')
+    self.conn = MockSerial()
+    self.rgm = rgm3800.RGM3800Base(self.conn)
 
   def testGetTimestamp(self):
-    self.rgm.TestExpect('$PROY003*27\r\n')
-    self.rgm.TestProvide('$LOG003,20071226,101221*74\r\n')
-    self.rgm.TestStart()
+    self.conn.TestExpect('$PROY003*27\r\n')
+    self.conn.TestProvide('$LOG003,20071226,101221*74\r\n')
+    self.conn.TestStart()
     x = self.rgm.GetTimestamp()
-    self.rgm.TestFinish()
+    self.conn.TestFinish()
     self.assertEqual(datetime.datetime(2007, 12, 26, 10, 12, 21), x)
 
   def testGetMemoryTimeframe(self):
-    self.rgm.TestExpect('$PROY006*22\r\n')
-    self.rgm.TestProvide('$LOG006,20071225,113436,20071226,101525*71\r\n')
-    self.rgm.TestStart()
+    self.conn.TestExpect('$PROY006*22\r\n')
+    self.conn.TestProvide('$LOG006,20071225,113436,20071226,101525*71\r\n')
+    self.conn.TestStart()
     x, y = self.rgm.GetMemoryTimeframe()
-    self.rgm.TestFinish()
+    self.conn.TestFinish()
     self.assertEqual(datetime.datetime(2007, 12, 25, 11, 34, 36), x)
     self.assertEqual(datetime.datetime(2007, 12, 26, 10, 15, 25), y)
 
+  def testGetMemoryTimeframeOnVirginDevice(self):
+    self.conn.TestExpect('$PROY006*22\r\n')
+    self.conn.TestProvide('$LOG006,0*6E\r\n')
+    self.conn.TestStart()
+    x, y = self.rgm.GetMemoryTimeframe()
+    self.conn.TestFinish()
+    self.assertEqual(None, x)
+    self.assertEqual(None, y)
+
   def testEraseFails(self):
-    self.rgm.TestExpect('$PROY109,-1*1C\r\n')
-    self.rgm.TestProvide('$LOG109,0*60\r\n')
-    self.rgm.TestStart()
+    self.conn.TestExpect('$PROY109,-1*1C\r\n')
+    self.conn.TestProvide('$LOG109,0*60\r\n')
+    self.conn.TestStart()
     x = self.rgm.Erase()
-    self.rgm.TestFinish()
+    self.conn.TestFinish()
     self.assertEqual(False, x)
 
   def testErase(self):
-    self.rgm.TestExpect('$PROY109,-1*1C\r\n')
-    self.rgm.TestProvide('$LOG109,1*61\r\n')
+    self.conn.TestExpect('$PROY109,-1*1C\r\n')
+    self.conn.TestProvide('$LOG109,1*61\r\n')
     for i in range(30):
-      self.rgm.TestProvide('$PSRFTXTSFAM Test Report: Erase now*42\r\n')
-    self.rgm.TestStart()
+      self.conn.TestProvide('$PSRFTXTSFAM Test Report: Erase now*42\r\n')
+    self.conn.TestStart()
     x = self.rgm.Erase(msg_timeout=0.01)
-    self.rgm.TestFinish()
+    self.conn.TestFinish()
     self.assertEqual(True, x)
 
 
@@ -473,17 +465,17 @@ if 0:
       self.rgm = RGM3800WithSerialMock('filename')
 
     def testBrokenData(self):
-      self.rgm.TestExpect('$PROY108*2D\r\n')
-      self.rgm.TestProvide('$LOG108,4,-1,-1,1,0,1,0,15,285*5E\r\n')
-      self.rgm.TestExpect('$PROY101,13*0A\r\n')
-      self.rgm.TestProvide('$LOG101,20090311,4,28,288484*48\r\n')
-      self.rgm.TestExpect('$PROY102,288484,4,28*3F\r\n')
-      self.rgm.TestProvide('$LOG102,...\r\n')
+      self.conn.TestExpect('$PROY108*2D\r\n')
+      self.conn.TestProvide('$LOG108,4,-1,-1,1,0,1,0,15,285*5E\r\n')
+      self.conn.TestExpect('$PROY101,13*0A\r\n')
+      self.conn.TestProvide('$LOG101,20090311,4,28,288484*48\r\n')
+      self.conn.TestExpect('$PROY102,288484,4,28*3F\r\n')
+      self.conn.TestProvide('$LOG102,...\r\n')
       # The data contains a row with ok=255, h=255, m=255, s=255, this should
       # be skipped.  Data removed for privacy reasons.
-      self.rgm.TestStart()
+      self.conn.TestStart()
       rgm3800.DoTrack(self.rgm, ['13'])
-      self.rgm.TestFinish()
+      self.conn.TestFinish()
 
 
 if __name__ == '__main__':

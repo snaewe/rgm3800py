@@ -34,9 +34,21 @@ import Queue
 import re
 import struct
 import sys
-import termios
 import threading
 import time
+
+
+try:
+  # There is no termios on e.g. Windows.
+  import termios
+except ImportError:
+  try:
+    # Without termios we'll need pySerial.
+    import serial
+  except ImportError:
+    # pySerial not installed, no way we can talk to the device.
+    print 'Please install pySerial.'
+    sys.exit(1)
 
 
 verbose = False
@@ -68,13 +80,13 @@ def PrintCallInfo(func):
   return _Runner
 
 
-class _SerialMixin(object):
+class TermiosSerial(object):
   """Implement buffered serial communication.
 
   Start:  Call constructor with filename of serial device.
-  Finished:  Shutdown()
-  Send data:  _Send(data)
-  Recv data:  _Recv(length, timeout)
+  Finished:  close()
+  Send data:  write(data)
+  Recv data:  read(length)
   """
 
   def __init__(self, filename):
@@ -110,7 +122,7 @@ class _SerialMixin(object):
     self.__receiver_running = True
     self.__receiver.start()
 
-  def Shutdown(self):
+  def close(self):
     """Shut down serial communication."""
     # Notify receiver thread to stop, then wait for it.
     if self.__receiver_running:
@@ -136,7 +148,7 @@ class _SerialMixin(object):
     try:
       while self.__receiver_running:
         # Prevent us eating all CPU time.
-        time.sleep(0.1)
+        time.sleep(0.001)
         try:
           # Get whatever is there, if we're running every 1/10th of a second it
           # shouldn't be more than ~1.5K.
@@ -151,7 +163,7 @@ class _SerialMixin(object):
       self.__receiver_running = False
       self._Close()
 
-  def _Send(self, data):
+  def write(self, data):
     """Send some data to the device.
 
     Args:
@@ -161,7 +173,7 @@ class _SerialMixin(object):
       raise SerialConnectionLost
     os.write(self._fd, data)
 
-  def _Recv(self, length=1, timeout=None):
+  def read(self, length=1):
     """Retrieve a specific amount of data or time out.
 
     This method returns if either 'length' data was received or 'timeout'
@@ -171,18 +183,19 @@ class _SerialMixin(object):
 
     Args:
       length: Integer, amount of bytes to retrieve.
-      timeout: Float, timeout in seconds.  Or None for no timeout.
 
     Returns:
       String of received data, can be empty.
     """
+    # Time out one second after we start.
+    endtime = time.time() + 1.0
+
     # self.__buffer is the Queue feeding us data from the receiver thread.
     # self.__buffer2 is data we already got from the Queue but didn't use yet.
-    starttime = time.time()
     data = ''
     while length:
       # Have we timed out?
-      if timeout and time.time() > starttime + timeout:
+      if time.time() > endtime:
         break
 
       # Fill up buffer2 by getting data from the queue.
@@ -191,7 +204,7 @@ class _SerialMixin(object):
           self.__buffer2 = self.__buffer.get_nowait()
         except Queue.Empty:
           # Don't eat all CPU!
-          time.sleep(0.1)
+          time.sleep(0.001)
           continue
 
       # Extract data from buffer2.
@@ -444,7 +457,9 @@ def NMEABuildLine(msg):
 
 
 class RGM3800Base(object):
-  def __init__(self):
+  def __init__(self, conn):
+    self.conn = conn
+
     self._cached_info = None
 
   def ShowProgress(self, msg):
@@ -467,13 +482,13 @@ class RGM3800Base(object):
     msg = NMEABuildLine(msg)
     if verbose:
       print >>sys.stderr, ">>", repr(msg)
-    self._Send(msg)
+    self.conn.write(msg)
 
   def RecvMessage(self):
     state = 'start'
     msg = ''
     while True:
-      c = self._Recv(timeout=1.0)
+      c = self.conn.read(1)
       if c == '':
         # We didn't receive a clean message.  Drop what we got.  :-(
         return ''
@@ -637,7 +652,10 @@ class RGM3800Base(object):
 
   def GetMemoryTimeframe(self):
     data = self.SendRecv('PROY006', result='LOG006,')
-    _, fromdate, fromtime, todate, totime = data[0].split(',')
+    data = data[0].split(',')
+    if len(data) != 5:
+      return None, None
+    _, fromdate, fromtime, todate, totime = data
     return ParseDateTime(fromdate, fromtime), ParseDateTime(todate, totime)
 
   def SetGPSMouse(self, enabled):
@@ -821,15 +839,13 @@ class RGM3800Base(object):
     return True
 
 
-class RGM3800(RGM3800Base, _SerialMixin):
-  def __init__(self, device):
-    RGM3800Base.__init__(self)
+class RGM3800CLI(RGM3800Base):
+  def __init__(self, conn):
+    RGM3800Base.__init__(self, conn)
 
     self.progress_dash = 0
     self.progress_percent = None
     self.show_progress = True
-
-    _SerialMixin.__init__(self, device)
 
   def SetShowProgress(self, show):
     self.show_progress = show
@@ -1175,7 +1191,8 @@ def DoHelp():
 def DoVersion():
   r = _SUBVERSION_REVISION.replace('$', '').strip()
   d = _SUBVERSION_DATE.split()[1]
-  print 'rgm3800py %s (%s)' % (r, d)
+  pySerial = 'serial' in sys.modules and ' pySerial' or ''
+  print 'rgm3800py %s (%s)%s' % (r, d, pySerial)
   return 0
 
 
@@ -1238,8 +1255,20 @@ def main(argv):
       print >>sys.stderr, 'None or multiple PL2303 serial device found.  Use --device=...'
       return -1
 
-  # Open the device and run the function.
-  rgm = RGM3800(device)
+  # Open the device.
+  if 'termios' in sys.modules:
+    conn = TermiosSerial(device)
+  else:
+    try:
+      device = int(device)
+    except ValueError:
+      # It's a string, pass it and hope it's a device name.
+      pass
+    conn = serial.Serial(port=device, baudrate=115200, timeout=1,
+                         interCharTimeout=0)
+
+  # And go.
+  rgm = RGM3800CLI(conn)
   if verbose:
     rgm.SetShowProgress(False)
   try:
@@ -1249,7 +1278,7 @@ def main(argv):
     except SerialCommunicationError, reason:
       print 'ERROR: %s' % reason
   finally:
-    rgm.Shutdown()
+    conn.close()
 
   return retval
 
