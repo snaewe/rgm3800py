@@ -1,0 +1,7 @@
+﻿/* Localized versions of Info.plist keys */
+CFBundleName = "rgm3800";
+
+CFBundleShortVersionString = "Version 0.9";
+
+CFBundleGetInfoString = "Version 0.9, Copyright 2009 Niels Volkmann.";
+NSHumanReadableCopyright = "Copyright 2009 Niels Volkmann.";

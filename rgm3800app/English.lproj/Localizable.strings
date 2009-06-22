@@ -1,0 +1,32 @@
+/* rgm3800 strings */
+"ONLY_NUMBERS" = "Please enter only numbers for interval.";
+"INTERVAL" = "Please enter an interval in the range of 1-60s.";
+"GET_LOGGER_INFO" = "Please Query the logger first.";
+"LOGGER_NOT_FOUND" = "Logger not found!";
+"CANCELED" = "Canceled";
+"NO_TRACKS_CHOSEN" = "No tracks chosen!";
+"PROCESSING_ERROR" = "Error in processing tracks!";
+"DELETE_TRACKS" = "Are you shure you want to delete all tracks?";
+"TRACK_CHOSEN" = " track chosen";
+"TRACKS_CHOSEN" = " tracks chosen";
+"PROCESSING_TRACKS_1" = "Processing track ";
+"PROCESSING_TRACKS_2" = " of ";
+"PROCESSED_TRACK" = " track processed";
+"PROCESSED_TRACKS" = " tracks processed";
+"STOP" = "stop";
+"OVERWRITE" = "overwrite";
+"DAY" = " day ";
+"DAYS" = " days ";
+"HOUR" = " h";
+"WAYPOINTS" = " waypoints";
+"NO_DATE_OR_TIME" = "n/a";
+"WHICH_TRACKS" = "Please choose tracks.";
+"CHOOSE" = "Choose";
+
+/* Buttons */
+"OK" = "Ok";
+"CANCEL" = "Cancel";
+
+
+/* Growlstrings */
+"GROWL_TRACKS_PROCESSED" = "All tracks processed.";
