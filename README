@@ -1,6 +1,6 @@
-This tool has been tested to work under MacOS X and Linux with a RoyalTek
-RGM 3800 GPS data logger.  A user has informed me that it also works with the
-RoyalTek RBT 2300 device.
+This tool has been tested to work under MacOS X, Linux and Windows with a
+RoyalTek RGM 3800 GPS data logger.  A user has informed me that it also works
+with the RoyalTek RBT 2300 device.
 
 MacOS X:  Please first install a PL2303 driver, e.g.:
     http://osx-pl2303.sourceforge.net/
@@ -8,10 +8,13 @@ MacOS X:  Please first install a PL2303 driver, e.g.:
 Linux:  Please install a kernel that supports the PL2303 USB-serial chip.
 Just plug it in and have a look in your dmesg if the device is found.
 
+Windows:  You will need a PL2303 driver, Python, pywin32 and pyserial.
+
 Generally:  The device must be turned on, it's not sufficient to plug it in.
 If you get strange output or errors after playing around please unplug the
 device and turn it off.  After plugging it in again and turning it on it
-should behave correctly again.
+should behave correctly again.  In rare cases this isn't sufficient, you will
+then need to unplug the logger and remove batteries for a short while. 
 
 Run this tool in a terminal, this shows you some usage information:
     ./rgm3800.py --help
